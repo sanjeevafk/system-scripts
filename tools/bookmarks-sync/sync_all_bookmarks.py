@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 Unified Cross-Platform Bookmarks, Notes & GitHub Stars Sync Engine
-Author: VoidCommit / Sanjeev Kumar S
+Author: Sanjeev Kumar S
 Description: Automatically pulls saved items from LinkedIn, WhatsApp, and GitHub Stars,
              organizes/deduplicates against existing archives, syncs to native lists,
-             and pushes updates to git.
+             and pushes updates to GitHub.
 """
 
 import subprocess
@@ -14,14 +14,11 @@ import re
 import os
 import sys
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(SCRIPT_DIR, "data")
-os.makedirs(DATA_DIR, exist_ok=True)
-
-LINKEDIN_FILE = os.path.join(DATA_DIR, "linkedin_bookmarks.json")
-WHATSAPP_FILE = os.path.join(DATA_DIR, "whatsapp_self_notes.json")
-GITHUB_STARS_JSON = os.path.join(DATA_DIR, "github_starred_lists.json")
-GITHUB_STARS_MD = os.path.join(DATA_DIR, "github_starred_lists.md")
+BASE_DIR = "/home/sanjeev/dotfiles/docs-scripts"
+LINKEDIN_FILE = os.path.join(BASE_DIR, "linkedin_bookmarks.json")
+WHATSAPP_FILE = os.path.join(BASE_DIR, "whatsapp_self_notes.json")
+GITHUB_STARS_JSON = os.path.join(BASE_DIR, "github_starred_lists.json")
+GITHUB_STARS_MD = os.path.join(BASE_DIR, "github_starred_lists.md")
 LOG_FILE = os.path.expanduser("~/.opencli/sync.log")
 
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
@@ -156,7 +153,9 @@ def sync_linkedin():
     existing['metadata'] = {
         "source": "LinkedIn Saved Posts & Bookmarks",
         "last_synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "total_bookmarks": len(existing['bookmarks'])
+        "total_bookmarks": len(existing['bookmarks']),
+        "account_owner": "Sanjeev Kumar",
+        "account_id": "1352024121"
     }
 
     with open(LINKEDIN_FILE, "w", encoding="utf-8") as f:
@@ -167,6 +166,39 @@ def sync_linkedin():
 
 def sync_whatsapp():
     log("Syncing WhatsApp self-messages...")
+    
+    # 1. Try high-speed native wacli first (0 browser overhead)
+    wacli_bin = os.path.expanduser("~/.local/bin/wacli")
+    if os.path.exists(wacli_bin):
+        doc = subprocess.run([wacli_bin, 'doctor'], capture_output=True, text=True)
+        if 'AUTHENTICATED     true' in doc.stdout:
+            # Find self JID
+            jid_match = re.search(r'LINKED_JID\s+([a-zA-Z0-9_@.-]+)', doc.stdout)
+            self_jid = jid_match.group(1) if jid_match else "918925536470@s.whatsapp.net"
+            
+            res = subprocess.run([wacli_bin, 'messages', 'list', '--chat', self_jid, '--read-only', '--limit', '150', '--json'], capture_output=True, text=True)
+            if res.returncode == 0:
+                try:
+                    data = json.loads(res.stdout)
+                    msgs = data.get('data', {}).get('messages', [])
+                    raw_items = []
+                    for m in msgs:
+                        text = (m.get('Text') or '').strip()
+                        doc_title = (m.get('Filename') or '').strip()
+                        content = text or doc_title
+                        if content and (content.startswith('http') or 'pdf' in content.lower() or doc_title):
+                            raw_items.append({
+                                'meta': m.get('Timestamp', ''),
+                                'content': content,
+                                'docTitle': doc_title,
+                                'links': [content] if content.startswith('http') else []
+                            })
+                    return process_and_save_whatsapp(raw_items, source="wacli (native)")
+                except Exception as e:
+                    log(f"wacli parse error: {e}")
+
+    # 2. Fallback to OpenCLI browser bridge if wacli is unlinked
+    log("Falling back to OpenCLI browser bridge for WhatsApp...")
     subprocess.run(['opencli', 'browser', 'whatsapp', 'open', 'https://web.whatsapp.com', '--window', 'background'], capture_output=True)
     time.sleep(4)
 
@@ -201,10 +233,11 @@ def sync_whatsapp():
     })()
     """)
 
-    if not isinstance(raw_msgs, list):
-        log(f"WhatsApp extraction returned non-list: {raw_msgs}")
-        return 0
+    if isinstance(raw_msgs, list):
+        return process_and_save_whatsapp(raw_msgs, source="OpenCLI (browser)")
+    return 0
 
+def process_and_save_whatsapp(raw_msgs, source="WhatsApp"):
     existing = {"resources": []}
     if os.path.exists(WHATSAPP_FILE):
         with open(WHATSAPP_FILE, "r", encoding="utf-8") as f:
@@ -215,11 +248,11 @@ def sync_whatsapp():
 
     for item in raw_msgs:
         content = item.get('content', '').strip()
-        if content not in seen:
+        if content and content not in seen:
             seen.add(content)
             meta = item.get('meta', '').strip()
             time_match = re.search(r'\[(.*?)\]', meta)
-            timestamp = time_match.group(1) if time_match else ''
+            timestamp = time_match.group(1) if time_match else meta
             urls = item.get('links', [])
             found_urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', content)
             all_urls = list(set(urls + found_urls))
@@ -236,7 +269,7 @@ def sync_whatsapp():
             elif any(k in c for k in ['shoebpatel', 'hack-ai', 'techxiv', 'byern', 'lukata']):
                 category = 'Security & DevTools'
             else:
-                category = 'Reference / General'
+                category = 'Reference / Spreadsheets'
 
             existing['resources'].insert(0, {
                 "id": len(existing['resources']) + 1,
@@ -254,15 +287,16 @@ def sync_whatsapp():
         r['id'] = i + 1
 
     existing['metadata'] = {
-        "source": "WhatsApp Self Notes",
+        "source": f"WhatsApp Self Notes ({source})",
         "last_synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "total_curated_resources": len(existing['resources'])
+        "total_curated_resources": len(existing['resources']),
+        "account_owner": "Sanjeev Kumar"
     }
 
     with open(WHATSAPP_FILE, "w", encoding="utf-8") as f:
         json.dump(existing, f, indent=2, ensure_ascii=False)
 
-    log(f"WhatsApp sync complete: {new_count} new notes added (Total: {len(existing['resources'])})")
+    log(f"WhatsApp sync complete via {source}: {new_count} new notes added (Total: {len(existing['resources'])})")
     return new_count
 
 def categorize_github_repo(r):
@@ -319,6 +353,7 @@ def sync_github_stars():
 
     log(f"Detected {len(new_repos)} newly starred repositories. Fetching GitHub List IDs...")
     
+    # Query list IDs via GraphQL
     list_query = 'query { viewer { lists(first: 20) { nodes { id name } } } }'
     gql_res = subprocess.run(['gh', 'api', 'graphql', '--input', '-'], input=json.dumps({"query": list_query}), capture_output=True, text=True)
     list_map = {}
@@ -331,6 +366,7 @@ def sync_github_stars():
         target_list_id = list_map.get(cat)
         repo_id = r.get("node_id")
         
+        # Add to native GitHub list
         if target_list_id and repo_id:
             assign_query = {
                 "query": "mutation($itemId: ID!, $listIds: [ID!]!) { updateUserListsForItem(input: {itemId: $itemId, listIds: $listIds}) { clientMutationId } }",
@@ -338,6 +374,7 @@ def sync_github_stars():
             }
             subprocess.run(['gh', 'api', 'graphql', '--input', '-'], input=json.dumps(assign_query), capture_output=True)
 
+        # Add to local structure
         for l in existing.get("lists", []):
             if l.get("name") == cat:
                 l["repositories"].insert(0, {
@@ -350,9 +387,10 @@ def sync_github_stars():
                 })
                 l["count"] = len(l["repositories"])
 
+    # Update metadata
     total_starred = sum(l["count"] for l in existing.get("lists", []))
     existing["metadata"] = {
-        "source": "GitHub Starred Lists",
+        "source": "GitHub Stars (sanjeevafk)",
         "total_starred": total_starred,
         "last_synced_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "categories": {l["name"]: l["count"] for l in existing.get("lists", [])}
@@ -361,9 +399,10 @@ def sync_github_stars():
     with open(GITHUB_STARS_JSON, "w", encoding="utf-8") as f:
         json.dump(existing, f, indent=2, ensure_ascii=False)
 
+    # Regenerate markdown
     with open(GITHUB_STARS_MD, "w", encoding="utf-8") as f:
         f.write("# 🌟 GitHub Starred Repositories - Curated Collections\n\n")
-        f.write(f"> **Total Starred:** {total_starred} | **Last Updated:** {time.strftime('%B %d, %Y')}\n\n")
+        f.write(f"> **Account:** [@sanjeevafk](https://github.com/sanjeevafk) | **Total Starred:** {total_starred} | **Last Updated:** {time.strftime('%B %d, %Y')}\n\n")
         for l in existing.get("lists", []):
             f.write(f"## {l['name']} ({l['count']} repositories)\n\n")
             f.write(f"*{l.get('description', '')}*\n\n")
@@ -378,25 +417,25 @@ def sync_github_stars():
 
 def git_push_if_changed(total_new):
     if total_new == 0:
-        log("No new items to push to git.")
+        log("No new items to push to GitHub.")
         return
-    repo_root = os.path.abspath(os.path.join(BASE_DIR, ".."))
-    if not os.path.exists(os.path.join(repo_root, ".git")):
-        return
-    log(f"Pushing {total_new} new items to git repository...")
-    subprocess.run(['git', 'add', 'docs-scripts/data/'], cwd=repo_root)
-    subprocess.run(['git', 'commit', '-m', f"chore(sync): automated sync of {total_new} new bookmarks/notes/stars"], cwd=repo_root)
-    res = subprocess.run(['git', 'push', 'origin', 'main'], cwd=repo_root, capture_output=True, text=True)
+    log(f"Pushing {total_new} new items to GitHub dotfiles repo...")
+    cwd = "/home/sanjeev/dotfiles"
+    subprocess.run(['git', 'add', 'docs-scripts/linkedin_bookmarks.json', 'docs-scripts/whatsapp_self_notes.json', 'docs-scripts/github_starred_lists.json', 'docs-scripts/github_starred_lists.md'], cwd=cwd)
+    subprocess.run(['git', 'commit', '-m', f"chore(sync): automated sync of {total_new} new bookmarks/notes/stars"], cwd=cwd)
+    res = subprocess.run(['git', 'push', 'origin', 'main'], cwd=cwd, capture_output=True, text=True)
     if res.returncode == 0:
-        log("Successfully pushed updates to git.")
+        log("Successfully pushed updates to GitHub.")
     else:
         log(f"Git push warning/error: {res.stderr}")
 
 def main():
     log("=== Starting Unified Cross-Platform Sync Job ===")
     
+    # 1. Sync GitHub Stars
     new_gh = sync_github_stars()
 
+    # 2. Sync LinkedIn & WhatsApp via OpenCLI
     new_li = 0
     new_wa = 0
     doc = subprocess.run(['opencli', 'doctor'], capture_output=True, text=True)
