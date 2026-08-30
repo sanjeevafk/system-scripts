@@ -1,0 +1,7 @@
+<!DOCTYPE gui>
+<gui name="session" version="100">
+ <ActionProperties>
+  <Action name="close-session" shortcut="Ctrl+W"/>
+  <Action name="close-tab" shortcut="Ctrl+W"/>
+ </ActionProperties>
+</gui>

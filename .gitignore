@@ -1,0 +1,4 @@
+# Email configuration credentials
+.config/email/config.json
+*.token.json
+credentials.json

@@ -1,0 +1,27 @@
+[user]
+	email = your_email@example.com
+	name = Your Name
+
+[init]
+	defaultBranch = main
+
+[credential "https://github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+
+[credential "https://gist.github.com"]
+	helper = 
+	helper = !/usr/bin/gh auth git-credential
+
+[credential]
+	helper = store
+
+[push]
+	autoSetupRemote = true
+
+[pull]
+	rebase = false
+
+[core]
+	autocrlf = input
+	editor = nano

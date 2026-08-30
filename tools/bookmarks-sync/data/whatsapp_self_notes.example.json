@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "source": "WhatsApp Self Notes",
+    "last_synced_at": "2026-08-30T00:00:00Z",
+    "total_curated_resources": 1
+  },
+  "resources": [
+    {
+      "id": 1,
+      "timestamp": "12:00 pm, 25/8/2026",
+      "category": "AI & Agentic Systems",
+      "content": "https://magazine.sebastianraschka.com/p/coding-the-kv-cache-in-llms",
+      "urls": ["https://magazine.sebastianraschka.com/p/coding-the-kv-cache-in-llms"],
+      "has_document": false,
+      "document_title": "",
+      "search_index": "https://magazine.sebastianraschka.com/p/coding-the-kv-cache-in-llms ai & agentic systems 12:00 pm, 25/8/2026"
+    }
+  ]
+}

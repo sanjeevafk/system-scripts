@@ -1,0 +1,32 @@
+[Desktop Entry]
+DefaultProfile=VSCodeDarkModern.profile
+
+[General]
+ConfigVersion=1
+UseSingleInstance=true
+
+[MainWindow]
+1920x1200 screen: Height=1108
+1920x1200 screen: Width=1920
+1920x1200 screen: Window-Maximized=true
+1920x1200 screen: XPosition=0
+1920x1200 screen: YPosition=48
+MenuBar=Disabled
+State=AAAA/wAAAAD9AAAAAQAAAAAAAAAAAAAAAPwCAAAAAvsAAAAiAFEAdQBpAGMAawBDAG8AbQBtAGEAbgBkAHMARABvAGMAawAAAAAA/////wAAAUwA////+wAAABwAUwBTAEgATQBhAG4AYQBnAGUAcgBEAG8AYwBrAAAAAAD/////AAAA7gD///8AAAeAAAAEVAAAAAQAAAAEAAAACAAAAAj8AAAAAQAAAAIAAAACAAAAFgBtAGEAaQBuAFQAbwBvAGwAQgBhAHIAAAAAAP////8AAAAAAAAAAAAAABwAcwBlAHMAcwBpAG8AbgBUAG8AbwBsAGIAYQByAAAAAAD/////AAAAAAAAAAA=
+ToolBarsMovable=Disabled
+eDP-1=eDP-1
+
+[Shortcuts]
+close-session=Ctrl+W
+close-tab=Ctrl+W
+new-tab=Ctrl+T; Ctrl+Shift+T
+next-tab=Ctrl+Tab
+previous-tab=Ctrl+Shift+Tab
+
+[TabBar]
+ShowNewTabButton=true
+TabBarPosition=Top
+TabBarVisibility=AlwaysShowTabBar
+
+[UiSettings]
+ColorScheme=Breeze Dark

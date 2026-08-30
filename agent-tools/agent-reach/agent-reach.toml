@@ -1,0 +1,29 @@
+# Agent Reach dotfiles config
+# Tracks what was installed so bootstrap.sh can restore it
+
+[install]
+version = "1.5.0"
+venv = "~/.agent-reach-venv"
+npm_prefix = "~/.npm-global"
+channels = ["web", "youtube", "github", "rss", "v2ex", "bilibili", "twitter", "exa"]
+
+[twitter]
+# auth_token and ct0 are NOT stored here (secrets stay out of dotfiles)
+# They are exported from ~/.bashrc — rotate them there when cookies expire
+configured = true
+account = "@your_handle"
+
+[github]
+account = "your_github_username"
+auth_method = "keyring"
+
+[exa]
+backend = "mcporter"
+config = "~/.mcporter/mcporter.json"
+
+[skills]
+# Skill directories where SKILL.md is installed
+agents   = "~/.agents/skills/agent-reach"
+claude   = "~/.claude/skills/agent-reach"
+hermes   = "~/.hermes/skills/agent-reach"
+codex    = "~/.codex/skills/agent-reach"

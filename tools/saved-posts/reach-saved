@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""
+Agent Reach - Fast Bookmark & Saved Posts Query Engine
+Description: Search across your entire unified saved library (Instagram, Twitter, Reddit, etc.)
+             from terminal or directly in agent prompt workflows.
+"""
+
+import os
+import sys
+import json
+import argparse
+
+DATA_PATH = os.path.expanduser("~/.agent-reach/data/saved_bookmarks.json")
+
+
+def load_database():
+    if not os.path.exists(DATA_PATH):
+        print(f"❌ Error: Database not found at {DATA_PATH}")
+        print("Run 'sync-saved' to initialize your database.")
+        sys.exit(1)
+    with open(DATA_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def search_posts(query: str, author: str = None, post_type: str = None, platform: str = None, limit: int = 10):
+    posts = load_database()
+    terms = [t.lower() for t in query.split() if len(t) > 1]
+    
+    results = []
+    for p in posts:
+        caption = (p.get("caption") or p.get("description") or p.get("title") or "").lower()
+        username = p.get("username", "").lower()
+        full_name = p.get("full_name", "").lower()
+        ptype = p.get("type", "").lower()
+        pplat = p.get("platform", "instagram" if "instagram.com" in p.get("url", "") else "web").lower()
+        
+        if platform and platform.lower() not in pplat:
+            continue
+            
+        if author and author.lower() not in username and author.lower() not in full_name:
+            continue
+            
+        if post_type and post_type.lower() not in ptype:
+            continue
+            
+        score = 0
+        text_corpus = f"{caption} {username} {full_name} {pplat}"
+        
+        for t in terms:
+            if t in text_corpus:
+                score += 10
+            if t in caption:
+                score += 15
+            if t in username:
+                score += 20
+                
+        if query.lower() in text_corpus:
+            score += 50
+            
+        if score > 0:
+            results.append((score, p))
+            
+    results.sort(key=lambda x: x[0], reverse=True)
+    return [p for score, p in results[:limit]]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Platform-Agnostic Bookmarks & Inspiration Query Engine")
+    parser.add_argument("query", nargs="?", default="", help="Keywords or topic to search (e.g. 'cursor', 'shader', 'system design')")
+    parser.add_argument("--author", "-a", default=None, help="Filter by creator handle/name")
+    parser.add_argument("--platform", "-p", default=None, help="Filter by platform (e.g. 'instagram', 'youtube', 'twitter')")
+    parser.add_argument("--type", "-t", default=None, help="Filter by media type (Video, Reel, Carousel, Image)")
+    parser.add_argument("--limit", "-n", type=int, default=10, help="Maximum number of results to display")
+    parser.add_argument("--json", action="store_true", help="Output results as clean JSON")
+    
+    args = parser.parse_args()
+    
+    if not args.query and not args.author and not args.platform:
+        posts = load_database()
+        print(f"\n📚 Unified Personal Library: {len(posts)} total items indexed across platforms.")
+        print("Usage: saved '<query>' [--platform youtube/instagram] [--author @name]\n")
+        return
+        
+    matches = search_posts(args.query, author=args.author, post_type=args.type, platform=args.platform, limit=args.limit)
+    
+    if args.json:
+        print(json.dumps(matches, indent=2, ensure_ascii=False))
+        return
+        
+    print(f"\n🔍 Found {len(matches)} relevant bookmarks for query: '{args.query or 'All'}'\n" + "="*65)
+    
+    platform_icons = {
+        "instagram": "📸 Instagram",
+        "youtube": "🎥 YouTube",
+        "twitter": "🐦 Twitter/X",
+        "reddit": "🤖 Reddit",
+        "web": "🌐 Web"
+    }
+    
+    for i, p in enumerate(matches, 1):
+        url = p.get("url", "")
+        plat_key = p.get("platform") or ("youtube" if "youtu" in url else ("instagram" if "instagram" in url else "web"))
+        plat_label = platform_icons.get(plat_key.lower(), "🔖 Bookmark")
+        
+        cap_lines = [l.strip() for l in (p.get("caption") or p.get("title") or "").split("\n") if l.strip()]
+        snippet = cap_lines[0] if cap_lines else "No description"
+        if len(snippet) > 100:
+            snippet = snippet[:97] + "..."
+            
+        print(f"\n[{i}] [{plat_label}] 👤 @{p.get('username', 'Creator')} ({p.get('full_name') or ''}) · [{p.get('type', 'Media')}]")
+        print(f"    🔗 Link: {url}")
+        print(f"    📝 Summary: {snippet}")
+        if len(cap_lines) > 1:
+            more = " ".join(cap_lines[1:3])
+            if len(more) > 120:
+                more = more[:117] + "..."
+            print(f"    💡 Details: {more}")
+            
+    print("\n" + "="*65 + "\n")
+
+
+if __name__ == "__main__":
+    main()
