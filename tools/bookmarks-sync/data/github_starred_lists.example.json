@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "source": "GitHub Starred Lists",
+    "total_starred": 1,
+    "last_synced_at": "2026-08-30T00:00:00Z",
+    "categories": {
+      "AI & Autonomous Agents": 1
+    }
+  },
+  "lists": [
+    {
+      "name": "AI & Autonomous Agents",
+      "description": "Autonomous AI agents, LLM architectures, harness design, MCP servers, and cognitive workflows.",
+      "count": 1,
+      "repositories": [
+        {
+          "full_name": "example-org/agent-framework",
+          "url": "https://github.com/example-org/agent-framework",
+          "description": "Production-grade autonomous AI agent harness",
+          "language": "Python",
+          "stars": 1250,
+          "topics": ["ai", "agents", "mcp"]
+        }
+      ]
+    }
+  ]
+}

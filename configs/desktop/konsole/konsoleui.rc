@@ -1,0 +1,14 @@
+<!DOCTYPE gui>
+<gui name="konsole" version="101">
+ <ActionProperties>
+  <Action name="new-tab" shortcut="Ctrl+T; Ctrl+Shift+T"/>
+  <Action name="next-tab" shortcut="Ctrl+Tab"/>
+  <Action name="previous-tab" shortcut="Ctrl+Shift+Tab"/>
+  <Action name="next-view" shortcut="Ctrl+Tab"/>
+  <Action name="previous-view" shortcut="Ctrl+Shift+Tab"/>
+  <Action name="activate-next-tab" shortcut="Ctrl+Tab"/>
+  <Action name="activate-previous-tab" shortcut="Ctrl+Shift+Tab"/>
+  <Action name="close-tab" shortcut="Ctrl+W"/>
+  <Action name="close-session" shortcut="Ctrl+W"/>
+ </ActionProperties>
+</gui>

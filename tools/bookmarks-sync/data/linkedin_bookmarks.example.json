@@ -1,0 +1,20 @@
+{
+  "metadata": {
+    "source": "LinkedIn Saved Posts & Bookmarks",
+    "last_synced_at": "2026-08-30T00:00:00Z",
+    "total_bookmarks": 1
+  },
+  "bookmarks": [
+    {
+      "id": 1,
+      "author": "Example Author",
+      "author_profile": "https://www.linkedin.com/in/example-author",
+      "author_headline": "AI Engineer & Open Source Developer",
+      "posted_at": "1w",
+      "post_url": "https://www.linkedin.com/feed/update/urn:li:activity:123456789",
+      "content": "Deep dive into KV-Cache memory bandwidth and LLM inference optimizations #ai #llm",
+      "hashtags": ["ai", "llm"],
+      "search_index": "example author ai engineer & open source developer deep dive into kv-cache memory bandwidth and llm inference optimizations #ai #llm ai llm"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node ~/.gemini/antigravity-cli/statusline.js",
+    "enabled": true
+  }
+}

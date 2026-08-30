@@ -1,0 +1,349 @@
+#!/usr/bin/env python3
+"""
+CLI Email Tool for Gmail / IMAP / SMTP.
+Supports multi-account management, reading, searching, listing, and sending emails with aliases.
+"""
+
+import sys
+import os
+import json
+import imaplib
+import smtplib
+import email
+from email.header import decode_header
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import argparse
+
+CONFIG_PATH = os.path.expanduser("~/.config/email/config.json")
+
+def load_full_config():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error reading {CONFIG_PATH}: {e}", file=sys.stderr)
+            sys.exit(1)
+            
+    # Environment variables fallback
+    email_addr = os.getenv("GMAIL_ADDRESS") or os.getenv("EMAIL_ADDRESS")
+    app_pwd = os.getenv("GMAIL_APP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD")
+    
+    if email_addr and app_pwd:
+        return {
+            "default_account": "default",
+            "accounts": {
+                "default": {
+                    "email": email_addr,
+                    "app_password": app_pwd,
+                    "imap_server": os.getenv("IMAP_SERVER", "imap.gmail.com"),
+                    "imap_port": int(os.getenv("IMAP_PORT", "993")),
+                    "smtp_server": os.getenv("SMTP_SERVER", "smtp.gmail.com"),
+                    "smtp_port": int(os.getenv("SMTP_PORT", "465"))
+                }
+            }
+        }
+        
+    print(f"Error: Email configuration not found at {CONFIG_PATH}", file=sys.stderr)
+    print("Please configure ~/.config/email/config.json or set environment variables.", file=sys.stderr)
+    sys.exit(1)
+
+def get_account_config(account_name=None):
+    full_cfg = load_full_config()
+    
+    # Legacy single account format compatibility
+    if "accounts" not in full_cfg and "email" in full_cfg:
+        return full_cfg
+        
+    accounts = full_cfg.get("accounts", {})
+    if not accounts:
+        print("Error: No accounts configured in config.json", file=sys.stderr)
+        sys.exit(1)
+        
+    target_name = account_name or full_cfg.get("default_account")
+    
+    # If not specified and no default, pick first
+    if not target_name:
+        target_name = next(iter(accounts.keys()))
+        
+    # Match by key or email address
+    if target_name in accounts:
+        acc = dict(accounts[target_name])
+        acc["name"] = target_name
+        return acc
+        
+    for k, v in accounts.items():
+        if v.get("email", "").lower() == target_name.lower():
+            acc = dict(v)
+            acc["name"] = k
+            return acc
+            
+    print(f"Error: Account '{target_name}' not found. Available accounts: {', '.join(accounts.keys())}", file=sys.stderr)
+    sys.exit(1)
+
+def decode_mime(header_value):
+    if not header_value:
+        return ""
+    decoded_fragments = decode_header(header_value)
+    result = []
+    for fragment, encoding in decoded_fragments:
+        if isinstance(fragment, bytes):
+            if encoding:
+                try:
+                    result.append(fragment.decode(encoding, errors="replace"))
+                except LookupError:
+                    result.append(fragment.decode("utf-8", errors="replace"))
+            else:
+                result.append(fragment.decode("utf-8", errors="replace"))
+        else:
+            result.append(str(fragment))
+    return "".join(result)
+
+def connect_imap(config):
+    try:
+        mail = imaplib.IMAP4_SSL(config["imap_server"], config.get("imap_port", 993))
+        mail.login(config["email"], config["app_password"])
+        return mail
+    except Exception as e:
+        print(f"IMAP connection failed for {config['email']}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def cmd_accounts(args):
+    full_cfg = load_full_config()
+    accounts = full_cfg.get("accounts", {})
+    default_acc = full_cfg.get("default_account")
+    
+    if not accounts and "email" in full_cfg:
+        accounts = {"default": full_cfg}
+        default_acc = "default"
+        
+    print(f"\nConfigured Accounts ({len(accounts)}):")
+    print("-" * 75)
+    for name, acc in accounts.items():
+        is_def = " (DEFAULT)" if name == default_acc else ""
+        aliases = f" | Aliases: {', '.join(acc.get('aliases', []))}" if acc.get("aliases") else ""
+        print(f"• [{name}]{is_def} -> {acc.get('email')}{aliases}")
+    print("-" * 75 + "\n")
+
+def cmd_list(args):
+    config = get_account_config(args.account)
+    mail = connect_imap(config)
+    mail.select("INBOX", readonly=True)
+    
+    search_crit = "ALL"
+    if args.unread:
+        search_crit = "UNSEEN"
+    
+    status, messages = mail.search(None, search_crit)
+    if status != "OK" or not messages[0]:
+        print(f"No messages found in inbox ({config['email']}).")
+        mail.logout()
+        return
+    
+    msg_ids = messages[0].split()
+    limit = args.limit
+    target_ids = msg_ids[-limit:] if len(msg_ids) > limit else msg_ids
+    target_ids.reverse()
+    
+    acc_label = config.get("name", config["email"])
+    print(f"\nAccount: [{acc_label}] {config['email']}")
+    print(f"{'ID':<8} {'Date':<22} {'From':<32} {'Subject'}")
+    print("-" * 100)
+    
+    for mid in target_ids:
+        res, data = mail.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])")
+        if res == "OK":
+            raw_header = data[0][1].decode("utf-8", errors="replace")
+            parsed_header = email.message_from_string(raw_header)
+            subject = decode_mime(parsed_header.get("Subject", "(No Subject)"))
+            sender = decode_mime(parsed_header.get("From", "(Unknown)"))
+            date = decode_mime(parsed_header.get("Date", ""))
+            
+            sender_disp = (sender[:29] + '...') if len(sender) > 32 else sender
+            date_disp = (date[:19] + '..') if len(date) > 22 else date
+            subj_disp = (subject[:45] + '...') if len(subject) > 48 else subject
+            
+            print(f"{mid.decode():<8} {date_disp:<22} {sender_disp:<32} {subj_disp}")
+            
+    print("-" * 100)
+    print(f"Showing latest {len(target_ids)} emails (Total in mailbox: {len(msg_ids)})\n")
+    mail.logout()
+
+def cmd_read(args):
+    config = get_account_config(args.account)
+    mail = connect_imap(config)
+    mail.select("INBOX", readonly=True)
+    
+    res, data = mail.fetch(str(args.id), "(RFC822)")
+    if res != "OK" or not data or not data[0]:
+        print(f"Error: Email ID {args.id} not found in {config['email']}.", file=sys.stderr)
+        mail.logout()
+        sys.exit(1)
+        
+    raw_email = data[0][1]
+    msg = email.message_from_bytes(raw_email)
+    
+    subject = decode_mime(msg.get("Subject", "(No Subject)"))
+    sender = decode_mime(msg.get("From", "(Unknown)"))
+    to = decode_mime(msg.get("To", "(Unknown)"))
+    date = decode_mime(msg.get("Date", ""))
+    
+    body_text = ""
+    body_html = ""
+    
+    if msg.is_multipart():
+        for part in msg.walk():
+            ctype = part.get_content_type()
+            cdispo = str(part.get("Content-Disposition"))
+            if "attachment" not in cdispo:
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = part.get_content_charset() or "utf-8"
+                    try:
+                        text = payload.decode(charset, errors="replace")
+                    except LookupError:
+                        text = payload.decode("utf-8", errors="replace")
+                    if ctype == "text/plain":
+                        body_text += text
+                    elif ctype == "text/html":
+                        body_html += text
+    else:
+        payload = msg.get_payload(decode=True)
+        if payload:
+            charset = msg.get_content_charset() or "utf-8"
+            body_text = payload.decode(charset, errors="replace")
+            
+    content = body_text.strip() if body_text.strip() else body_html.strip()
+    
+    acc_label = config.get("name", config["email"])
+    print("\n" + "=" * 80)
+    print(f"Account: [{acc_label}] {config['email']}")
+    print(f"Subject: {subject}")
+    print(f"From:    {sender}")
+    print(f"To:      {to}")
+    print(f"Date:    {date}")
+    print("=" * 80 + "\n")
+    print(content)
+    print("\n" + "=" * 80 + "\n")
+    mail.logout()
+
+def cmd_search(args):
+    config = get_account_config(args.account)
+    mail = connect_imap(config)
+    mail.select("INBOX", readonly=True)
+    
+    query = args.query
+    status, messages = mail.search(None, f'(OR (SUBJECT "{query}") (FROM "{query}"))')
+    if status != "OK" or not messages[0]:
+        print(f"No messages found matching '{query}' in {config['email']}.")
+        mail.logout()
+        return
+        
+    msg_ids = messages[0].split()
+    limit = args.limit
+    target_ids = msg_ids[-limit:] if len(msg_ids) > limit else msg_ids
+    target_ids.reverse()
+    
+    acc_label = config.get("name", config["email"])
+    print(f"\nAccount: [{acc_label}] {config['email']}")
+    print(f"Found {len(msg_ids)} matches for '{query}'. Showing latest {len(target_ids)}:\n")
+    print(f"{'ID':<8} {'Date':<22} {'From':<32} {'Subject'}")
+    print("-" * 100)
+    
+    for mid in target_ids:
+        res, data = mail.fetch(mid, "(BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE)])")
+        if res == "OK":
+            raw_header = data[0][1].decode("utf-8", errors="replace")
+            parsed_header = email.message_from_string(raw_header)
+            subject = decode_mime(parsed_header.get("Subject", "(No Subject)"))
+            sender = decode_mime(parsed_header.get("From", "(Unknown)"))
+            date = decode_mime(parsed_header.get("Date", ""))
+            
+            sender_disp = (sender[:29] + '...') if len(sender) > 32 else sender
+            date_disp = (date[:19] + '..') if len(date) > 22 else date
+            subj_disp = (subject[:45] + '...') if len(subject) > 48 else subject
+            
+            print(f"{mid.decode():<8} {date_disp:<22} {sender_disp:<32} {subj_disp}")
+            
+    print("-" * 100 + "\n")
+    mail.logout()
+
+def cmd_send(args):
+    config = get_account_config(args.account)
+    
+    sender_addr = args.from_addr if args.from_addr else config["email"]
+    
+    msg = MIMEMultipart()
+    msg["From"] = sender_addr
+    msg["To"] = args.to
+    msg["Subject"] = args.subject
+    
+    body = args.body
+    if args.body_file:
+        if not os.path.exists(args.body_file):
+            print(f"Error: Body file not found: {args.body_file}", file=sys.stderr)
+            sys.exit(1)
+        with open(args.body_file, "r") as f:
+            body = f.read()
+            
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+    
+    print(f"Sending via account: [{config.get('name', config['email'])}]")
+    print(f"From:               {sender_addr}")
+    print(f"To:                 {args.to}")
+    print(f"Subject:            {args.subject}")
+    
+    try:
+        server = smtplib.SMTP_SSL(config["smtp_server"], config.get("smtp_port", 465))
+        server.login(config["email"], config["app_password"])
+        server.sendmail(sender_addr, [args.to], msg.as_string())
+        server.quit()
+        print("✓ Email sent successfully!")
+    except Exception as e:
+        print(f"✗ Failed to send email: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def main():
+    parser = argparse.ArgumentParser(description="CLI Email Tool for Gmail/IMAP/SMTP with Multi-Account Support")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    
+    # accounts
+    acc_p = subparsers.add_parser("accounts", help="List all configured accounts")
+    acc_p.set_defaults(func=cmd_accounts)
+    
+    # list
+    list_p = subparsers.add_parser("list", help="List recent emails in inbox")
+    list_p.add_argument("-a", "--account", help="Account name or email (e.g. personal, dev)")
+    list_p.add_argument("-n", "--limit", type=int, default=10, help="Number of emails to list (default: 10)")
+    list_p.add_argument("-u", "--unread", action="store_true", help="Only list unread emails")
+    list_p.set_defaults(func=cmd_list)
+    
+    # read
+    read_p = subparsers.add_parser("read", help="Read an email by ID")
+    read_p.add_argument("id", help="Message ID to read")
+    read_p.add_argument("-a", "--account", help="Account name or email (e.g. personal, dev)")
+    read_p.set_defaults(func=cmd_read)
+    
+    # search
+    search_p = subparsers.add_parser("search", help="Search emails")
+    search_p.add_argument("query", help="Search term in subject or sender")
+    search_p.add_argument("-a", "--account", help="Account name or email (e.g. personal, dev)")
+    search_p.add_argument("-n", "--limit", type=int, default=10, help="Max results (default: 10)")
+    search_p.set_defaults(func=cmd_search)
+    
+    # send
+    send_p = subparsers.add_parser("send", help="Send an email")
+    send_p.add_argument("--to", required=True, help="Recipient email address")
+    send_p.add_argument("-a", "--account", help="Account to send through (e.g. personal, dev)")
+    send_p.add_argument("--from", dest="from_addr", help="Sender email address / alias (optional)")
+    send_p.add_argument("--subject", required=True, help="Subject of the email")
+    send_p.add_argument("--body", default="", help="Body of the email")
+    send_p.add_argument("--body-file", help="Path to text file with email body")
+    send_p.set_defaults(func=cmd_send)
+    
+    args = parser.parse_args()
+    args.func(args)
+
+if __name__ == "__main__":
+    main()

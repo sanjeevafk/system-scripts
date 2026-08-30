@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+import sys, os, base64, urllib.request, subprocess
+
+def render_mermaid_ink(code: str, width: int = 80, height: int = 30):
+    encoded = base64.b64encode(code.encode('utf-8')).decode('utf-8')
+    url = f"https://mermaid.ink/svg/{encoded}"
+    tmp_path = f"/tmp/mermaid_{os.getpid()}.svg"
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)'})
+        with urllib.request.urlopen(req) as resp, open(tmp_path, 'wb') as f:
+            f.write(resp.read())
+        subprocess.run(['chafa', '-s', f'{width}x{height}', tmp_path])
+        return True
+    except Exception as e:
+        print(f"mermaid.ink error: {e}", file=sys.stderr)
+        return False
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: render-diagram <mermaid|mmd|file> [code-or-filepath]")
+        sys.exit(1)
+        
+    arg1 = sys.argv[1]
+    
+    if os.path.isfile(arg1):
+        if arg1.endswith('.mmd') or arg1.endswith('.mermaid'):
+            with open(arg1) as f:
+                render_mermaid_ink(f.read())
+        else:
+            subprocess.run(['chafa', '-s', '80x30', arg1])
+        return
+
+    diag_type = arg1.lower()
+    code = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else sys.stdin.read()
+    
+    if diag_type in ['mermaid', 'mmd']:
+        render_mermaid_ink(code)
+    else:
+        print(f"Unsupported diagram type: '{diag_type}'. Supported: mermaid, mmd", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
