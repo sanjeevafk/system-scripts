@@ -31,6 +31,8 @@ alias sync-saved='python3 "$REPO_ROOT/tools/saved-posts/sync_saved_posts.py"'
 alias sync-bookmarks='bash "$REPO_ROOT/tools/bookmarks-sync/run_cron_sync.sh"'
 alias organize-stars='python3 "$REPO_ROOT/tools/bookmarks-sync/organize_github_stars.py"'
 alias saved='reach-saved'
+alias docker='podman'
+alias docker-compose='podman-compose'
 
 # Run fastfetch on shell open
 command -v fastfetch &>/dev/null && fastfetch
