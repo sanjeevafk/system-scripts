@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""
+sync-subs: Agnostic automatic subtitle synchronizer using speech recognition.
+Aligns any subtitle file (.srt, .vtt, etc.) to any video (.mp4, .mkv, .avi, etc.)
+via audio cross-correlation.
+"""
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts", ".flv", ".wmv"}
+SUB_EXTS = {".srt", ".vtt", ".sub", ".ass", ".ssa"}
+
+
+def check_prerequisites():
+    """Verify ffmpeg and an ffsubsync runner are available."""
+    if not shutil.which("ffmpeg"):
+        sys.exit(
+            "Error: 'ffmpeg' is required but not found in PATH.\n"
+            "Install it via your package manager (e.g., sudo apt install ffmpeg)."
+        )
+
+    if shutil.which("ffsubsync"):
+        return ["ffsubsync"]
+    elif shutil.which("uvx"):
+        return ["uvx", "ffsubsync"]
+    elif shutil.which("pipx"):
+        return ["pipx", "run", "ffsubsync"]
+    else:
+        sys.exit(
+            "Error: Neither 'ffsubsync', 'uvx', nor 'pipx' was found.\n"
+            "Install ffsubsync or uv (e.g., 'pip install ffsubsync' or install uv)."
+        )
+
+
+def find_files(target_paths):
+    """Resolve video and subtitle paths from provided arguments or directory."""
+    if not target_paths:
+        target_paths = [Path.cwd()]
+
+    videos = []
+    subs = []
+
+    for p in target_paths:
+        path = Path(p).resolve()
+        if path.is_file():
+            if path.suffix.lower() in VIDEO_EXTS:
+                videos.append(path)
+            elif path.suffix.lower() in SUB_EXTS:
+                subs.append(path)
+        elif path.is_dir():
+            for child in sorted(path.iterdir()):
+                if child.is_file():
+                    ext = child.suffix.lower()
+                    if ext in VIDEO_EXTS:
+                        videos.append(child)
+                    elif ext in SUB_EXTS and not child.name.endswith(".original.srt"):
+                        subs.append(child)
+
+    if not videos:
+        sys.exit("Error: No video file found in the specified path(s).")
+    if not subs:
+        sys.exit("Error: No subtitle file found in the specified path(s).")
+
+    # Match video to subtitle
+    if len(videos) == 1 and len(subs) == 1:
+        return videos[0], subs[0]
+
+    # Try matching by filename stem
+    for v in videos:
+        for s in subs:
+            if s.stem.startswith(v.stem):
+                return v, s
+
+    # Fallback to first found
+    print(f"Warning: Multiple files detected. Pairing '{videos[0].name}' with '{subs[0].name}'.")
+    return videos[0], subs[0]
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Agnostic CLI to auto-sync subtitles to video audio."
+    )
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        help="Path to video, subtitle, or folder containing both (defaults to current directory).",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        help="Optional custom output subtitle path.",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip creating a .original.srt backup copy.",
+    )
+
+    args = parser.parse_args()
+    runner_cmd = check_prerequisites()
+    video_path, sub_path = find_files(args.paths)
+
+    output_path = Path(args.output).resolve() if args.output else sub_path
+    backup_path = sub_path.with_name(f"{sub_path.stem}.original{sub_path.suffix}")
+
+    print(f"-> Video:     {video_path}")
+    print(f"-> Subtitles: {sub_path}")
+
+    # Create backup if in-place and not requested otherwise
+    if output_path == sub_path and not args.no_backup:
+        if not backup_path.exists():
+            shutil.copy2(sub_path, backup_path)
+            print(f"-> Backup:    {backup_path.name}")
+        else:
+            print(f"-> Backup:    (already exists at {backup_path.name})")
+
+    temp_out = sub_path.with_name(f"{sub_path.stem}.tmp_synced{sub_path.suffix}")
+
+    cmd = runner_cmd + [str(video_path), "-i", str(sub_path), "-o", str(temp_out)]
+    print(f"-> Aligning speech waveforms...")
+
+    result = subprocess.run(cmd)
+    if result.returncode != 0:
+        if temp_out.exists():
+            temp_out.unlink()
+        sys.exit(f"Error: Subtitle synchronization failed with code {result.returncode}.")
+
+    shutil.move(temp_out, output_path)
+    print(f"\n[✓] Successfully synchronized: {output_path}")
+
+
+if __name__ == "__main__":
+    main()

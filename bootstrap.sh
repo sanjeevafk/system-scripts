@@ -99,6 +99,12 @@ if [ -f "$DIR/tools/saved-posts/reach-saved" ]; then
     info "Linked reach-saved CLI tool."
 fi
 
+if [ -f "$DIR/tools/media/sync-subs" ]; then
+    ln -sfn "$DIR/tools/media/sync-subs" "$HOME/.local/bin/sync-subs"
+    chmod +x "$DIR/tools/media/sync-subs"
+    info "Linked sync-subs CLI tool."
+fi
+
 # ------------------------------------------------------------------------------
 # Step 4: Conditionally Link Desktop & Theme Configurations
 # ------------------------------------------------------------------------------

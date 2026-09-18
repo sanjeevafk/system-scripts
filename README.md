@@ -27,6 +27,7 @@ After running setup, open a new shell for changes to take effect.
 | **Tools** | `tools/vpn/` | Linux network namespace isolation and VPN proxy launcher |
 | **Tools** | `tools/diagrams/` | Mermaid diagram rendering from the terminal |
 | **Tools** | `tools/terminal/` | Single-instance Konsole tab wrapper and screenshot utilities |
+| **Tools** | `tools/media/` | Automated speech-to-subtitle synchronization (`sync-subs`) |
 | **Tools** | `tools/backup/` | Automated cloud storage backup and archiving with rclone |
 | **AI Agents** | `agent-tools/agent-reach/` | AI agent web browsing, social search, and MCP tools |
 | **AI Agents** | `agent-tools/antigravity/` | Real-time agent status line and shell environment bindings |
@@ -62,6 +63,15 @@ sync-bookmarks
 
 # Organize all your GitHub starred repositories into 7 native GitHub lists
 organize-stars
+```
+
+### `sync-subs`
+
+```bash
+# Sync subtitles to video audio in current folder or specified path
+sync-subs
+sync-subs /path/to/movie-dir
+sync-subs video.mkv subtitles.srt
 ```
 
 ### `email-tool`
